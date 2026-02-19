@@ -1,11 +1,11 @@
 blueprint:
-  name: Heizungssteuerung nach Anwesenheit + Fenster (Multi-Heizungen)
+  name: Heizungssteuerung nach Anwesenheit + Fenster (Multi-Heizungen) + Nachtmodus
   description: >
     Steuert eine oder mehrere Heizungen (climate.*) nach Anwesenheit.
-    - Startet erst ab einer frei wählbaren Uhrzeit (Morgen-Start).
-    - Mindestens eine Person zuhause => Anwesenheits-Temperatur.
-    - Niemand zuhause => nach Verzögerung Abwesenheits-Temperatur.
-    - Wenn ein Fenster offen ist => Heizungen werden ausgeschaltet (climate.turn_off).
+    - Aktivzeit: von Startzeit bis Endzeit.
+    - Innerhalb Aktivzeit: Anwesenheit steuert Temperatur.
+    - Außerhalb Aktivzeit (Nachtmodus): feste Nacht-Temperatur (bis Startzeit).
+    - Fenster offen: Heizungen AUS (hat immer Vorrang).
 
   domain: automation
 
@@ -29,16 +29,35 @@ blueprint:
             - binary_sensor
             - input_boolean
 
-    morning_start:
-      name: Morgen-Startzeit
-      description: Ab dieser Uhrzeit beginnt die Automatik (vorher wird nichts verändert).
+    start_time:
+      name: Startzeit (morgens)
+      description: Ab dieser Uhrzeit ist die Anwesenheits-Steuerung aktiv.
       default: "06:00:00"
       selector:
         time:
 
+    end_time:
+      name: Endzeit (abends)
+      description: Ab dieser Uhrzeit gilt Nachtmodus (bis zur Startzeit).
+      default: "23:00:00"
+      selector:
+        time:
+
+    temp_night:
+      name: Nacht-Temperatur
+      description: Temperatur im Nachtmodus (zwischen Endzeit und Startzeit).
+      default: 17
+      selector:
+        number:
+          min: 5
+          max: 35
+          step: 0.5
+          unit_of_measurement: "°C"
+          mode: slider
+
     away_delay:
       name: Verzögerung bei Abwesenheit (Sekunden)
-      description: Wenn niemand zuhause ist, so lange warten, bevor Abwesenheits-Temperatur gesetzt wird.
+      description: Wenn niemand zuhause ist, so lange warten, bevor Abwesenheits-Temperatur gesetzt wird (nur innerhalb Aktivzeit).
       default: 300
       selector:
         number:
@@ -50,7 +69,7 @@ blueprint:
 
     temp_present:
       name: Temperatur bei Anwesenheit
-      description: Wird gesetzt, wenn mindestens eine Person zuhause ist.
+      description: Wird gesetzt, wenn mindestens eine Person zuhause ist (nur innerhalb Aktivzeit).
       default: 21
       selector:
         number:
@@ -62,7 +81,7 @@ blueprint:
 
     temp_away:
       name: Temperatur bei Abwesenheit
-      description: Wird gesetzt, wenn niemand zuhause ist (nach Verzögerung).
+      description: Wird gesetzt, wenn niemand zuhause ist (nach Verzögerung, nur innerhalb Aktivzeit).
       default: 18
       selector:
         number:
@@ -87,10 +106,10 @@ mode: restart
 max_exceeded: silent
 
 variables:
-  v_heaters: !input heaters
   v_windows: !input windows
-  v_morning_start: !input morning_start
   v_extra_presence: !input extra_presence
+  v_start: !input start_time
+  v_end: !input end_time
 
   v_presence_all: >-
     {{ ['person.emiliaseitz', 'person.kaiseitz'] + (v_extra_presence | list) }}
@@ -105,33 +124,31 @@ variables:
       {{ expand(v_windows) | selectattr('state','eq','on') | list | count > 0 }}
     {% endif %}
 
-trigger:
-  # Start der Automatik am Morgen
-  - platform: time
-    at: !input morning_start
+  in_active_time: >-
+    {% set now_t = now() %}
+    {% set start_t = today_at(v_start) %}
+    {% set end_t = today_at(v_end) %}
+    {{ now_t >= start_t and now_t < end_t }}
 
-  # Anwesenheit ändert sich (feste Personen)
+trigger:
+  - platform: time
+    at: !input start_time
+  - platform: time
+    at: !input end_time
+
   - platform: state
     entity_id:
       - person.emiliaseitz
       - person.kaiseitz
 
-  # Anwesenheit ändert sich (zusätzliche Entities)
   - platform: state
     entity_id: !input extra_presence
 
-  # Fenster ändert sich
   - platform: state
     entity_id: !input windows
 
-  # Safety: alle 5 Minuten
   - platform: time_pattern
     minutes: "/5"
-
-condition:
-  # Vor der Morgen-Startzeit: keine Steuerung
-  - condition: template
-    value_template: "{{ now() >= today_at(v_morning_start) }}"
 
 action:
   - choose:
@@ -144,17 +161,26 @@ action:
             target:
               entity_id: !input heaters
 
-      # Niemand zuhause -> warten -> wenn immer noch niemand zuhause und Fenster zu -> Abwesenheits-Temp
+      # Nachtmodus (außerhalb Aktivzeit) -> Nacht-Temp (Fenster muss zu sein)
       - conditions:
           - condition: template
-            value_template: "{{ not anyone_home }}"
+            value_template: "{{ not in_active_time }}"
+        sequence:
+          - service: climate.set_temperature
+            target:
+              entity_id: !input heaters
+            data:
+              temperature: !input temp_night
+
+      # Aktivzeit: niemand zuhause -> warten -> wenn immer noch niemand zuhause + Fenster zu -> Abwesenheits-Temp
+      - conditions:
+          - condition: template
+            value_template: "{{ in_active_time and (not anyone_home) }}"
         sequence:
           - delay:
               seconds: !input away_delay
           - condition: template
-            value_template: "{{ not anyone_home }}"
-          - condition: template
-            value_template: "{{ not any_window_open }}"
+            value_template: "{{ in_active_time and (not anyone_home) and (not any_window_open) }}"
           - service: climate.set_temperature
             target:
               entity_id: !input heaters
@@ -162,11 +188,9 @@ action:
               temperature: !input temp_away
 
     default:
-      # Jemand zuhause und Fenster zu -> Anwesenheits-Temp
+      # Aktivzeit: jemand zuhause + Fenster zu -> Anwesenheits-Temp
       - condition: template
-        value_template: "{{ anyone_home }}"
-      - condition: template
-        value_template: "{{ not any_window_open }}"
+        value_template: "{{ in_active_time and anyone_home and (not any_window_open) }}"
       - service: climate.set_temperature
         target:
           entity_id: !input heaters

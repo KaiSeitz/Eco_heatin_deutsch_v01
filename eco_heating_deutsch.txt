@@ -1,34 +1,47 @@
 blueprint:
-  name: ECO Heating Ultimate v1.2 (DE – Personen/Handys + Zeitfenster-Schalter)
+  name: Heizung nach Anwesenheit + Fenster (mehrere Heizungen)
   description: >
-    Steuert ein Thermostat (Climate Entity) anhand von Anwesenheit (Personen/Handys),
-    Zeitfenstern (Morgen/Tag/Abend/Nacht), optional Fensterkontakt, optional Komfort-Schaltern
-    sowie optionaler Automations-Sperre.
-
-    Anwesenheit:
-    Du wählst eine oder mehrere Entities (person.* und/oder device_tracker.*).
-    „Zuhause“ = mindestens eine ausgewählte Entity hat den Zustand „home“.
-    Wenn niemand zuhause ist, wird nach der Wartezeit die Abwesenheits-Temperatur gesetzt.
-
-    Zeitfenster-Schalter:
-    Jedes Zeitfenster (Morgen/Tag/Abend/Nacht) kann separat ein-/ausgeschaltet werden.
-    Wenn ein Zeitfenster deaktiviert ist, wird es ignoriert und es greift ggf. ein anderes aktives Zeitfenster
-    oder die Standard ECO-Temperatur.
+    Steuert mehrere Heizungen gemeinsam.
+    - Startet erst ab „Morgen-Startzeit“
+    - Mindestens eine Person zuhause => Anwesenheits-Temperatur
+    - Niemand zuhause => nach Verzögerung Abwesenheits-Temperatur
+    - Fenster offen => Heizungen AUS
+    Feste Personen: person.emiliaseitz + person.kaiseitz
+    Optional: weitere Personen/Tracker ergänzen.
 
   domain: automation
-  source_url: https://gist.github.com/TheRealSimon42/3b783cf34cf3185ada8dfa0ff67249c5
 
   input:
-    climate_entity:
-      name: Thermostat / Climate Entity
-      description: Thermostat oder Climate-Gruppe, die gesteuert werden soll
+    climate_entities:
+      name: Heizungen (eine oder mehrere)
+      description: Wähle die Thermostate / Climate-Entities, die gemeinsam gesteuert werden sollen.
       selector:
         entity:
+          multiple: true
           domain: climate
 
-    presence_entities:
-      name: Anwesenheit (Personen/Handys)
-      description: Wähle Personen (person.*) und/oder Handys (device_tracker.*). Zuhause = mindestens eine Entity ist „home“.
+    window_entities:
+      name: Fensterkontakte (optional)
+      description: Wenn einer davon „offen“ ist, werden die Heizungen ausgeschaltet.
+      default: []
+      selector:
+        entity:
+          multiple: true
+          domain:
+            - binary_sensor
+            - input_boolean
+
+    morning_start:
+      name: Morgen-Startzeit
+      description: Ab dieser Uhrzeit beginnt die Steuerung (vorher wird nichts verändert).
+      default: "06:00:00"
+      selector:
+        time:
+
+    extra_presence_entities:
+      name: Zusätzliche Anwesenheit (optional)
+      description: Weitere Personen (person.*) oder Tracker (device_tracker.*), die als „zuhause“ zählen.
+      default: []
       selector:
         entity:
           multiple: true
@@ -36,504 +49,132 @@ blueprint:
             - person
             - device_tracker
 
-    no_presence_wait:
-      name: Wartezeit bis Absenkung
-      description: Zeit, die gewartet wird, bevor bei „niemand zuhause“ auf Abwesenheits-Temperatur gestellt wird
-      default: 120
+    away_delay_seconds:
+      name: Verzögerung bis Abwesenheit (Sekunden)
+      description: Wenn niemand zuhause ist, so lange warten, bevor auf Abwesenheits-Temperatur gestellt wird.
+      default: 300
       selector:
         number:
-          min: 0
-          max: 3600
+          min: 5
+          max: 1800
+          step: 5
           unit_of_measurement: seconds
+          mode: slider
 
-    away_temprature:
-      name: Abwesenheits-Temperatur
-      description: Temperatur, wenn niemand zuhause ist
-      default: 16
-      selector:
-        number:
-          min: 5
-          max: 25
-          step: 0.5
-          unit_of_measurement: temperature
-
-    eco_temprature:
-      name: Standard ECO-Temperatur
-      description: Temperatur, wenn jemand zuhause ist und kein Zeitfenster greift
-      default: 17
-      selector:
-        number:
-          min: 5
-          max: 25
-          step: 0.5
-          unit_of_measurement: temperature
-
-    window_contact:
-      name: Fensterkontakt (optional)
-      description: Wenn Fenster im definierten Zustand ist, werden keine Temperaturen gesetzt
-      default:
-      selector:
-        entity:
-          domain:
-            - binary_sensor
-            - input_boolean
-
-    window_contact_boolean:
-      name: Fensterzustand (optional)
-      description: Unerwünschter Zustand (meist „on“ = offen)
-      default: true
-      selector:
-        boolean:
-
-    automation_blocker:
-      name: Automations-Sperre (optional)
-      description: Optionaler Schalter, der die Automation sperrt/erlaubt
-      default:
-      selector:
-        entity:
-          domain:
-            - binary_sensor
-            - input_boolean
-
-    automation_blocker_boolean:
-      name: Sperre - gewünschter Zustand
-      description: In welchem Zustand der Sperre soll die Automation laufen (on/off)
-      default: false
-      selector:
-        boolean:
-
-    enable_morning:
-      name: Zeitfenster Morgen aktiv
-      description: Schaltet das Morgen-Zeitfenster ein/aus.
-      default: true
-      selector:
-        boolean:
-
-    enable_day:
-      name: Zeitfenster Tag aktiv
-      description: Schaltet das Tag-Zeitfenster ein/aus.
-      default: true
-      selector:
-        boolean:
-
-    enable_evening:
-      name: Zeitfenster Abend aktiv
-      description: Schaltet das Abend-Zeitfenster ein/aus.
-      default: true
-      selector:
-        boolean:
-
-    enable_night:
-      name: Zeitfenster Nacht aktiv
-      description: Schaltet das Nacht-Zeitfenster ein/aus.
-      default: true
-      selector:
-        boolean:
-
-    time_morning:
-      name: Startzeit Morgen
-      description: Ab dieser Zeit gilt das Morgen-Zeitfenster
-      default: "06:00:00"
-      selector:
-        time:
-
-    morning_eco_temprature:
-      name: Morgen ECO-Temperatur
-      description: Standard-Temperatur morgens (wenn jemand zuhause ist)
-      default: 19
-      selector:
-        number:
-          min: 5
-          max: 25
-          step: 0.5
-          unit_of_measurement: temperature
-
-    morning_comfort_checker_boolean:
-      name: Morgen Komfort-Schalter (optional)
-      description: Wenn gesetzt und „on“, wird morgens Komfort statt ECO gesetzt
-      default:
-      selector:
-        entity:
-          domain:
-            - binary_sensor
-            - input_boolean
-
-    morning_comfort_temprature:
-      name: Morgen Komfort-Temperatur
-      description: Komfort-Temperatur morgens
+    temp_present:
+      name: Temperatur bei Anwesenheit
+      description: Temperatur, wenn mindestens eine Person zuhause ist.
       default: 21
       selector:
         number:
           min: 5
-          max: 25
+          max: 35
           step: 0.5
-          unit_of_measurement: temperature
+          unit_of_measurement: "°C"
+          mode: slider
 
-    time_day:
-      name: Startzeit Tag
-      description: Ab dieser Zeit gilt das Tag-Zeitfenster
-      default: "09:00:00"
-      selector:
-        time:
-
-    day_eco_temprature:
-      name: Tag ECO-Temperatur
-      description: Standard-Temperatur tagsüber (wenn jemand zuhause ist)
-      default: 19
-      selector:
-        number:
-          min: 5
-          max: 25
-          step: 0.5
-          unit_of_measurement: temperature
-
-    day_comfort_checker_boolean:
-      name: Tag Komfort-Schalter (optional)
-      description: Wenn gesetzt und „on“, wird tagsüber Komfort statt ECO gesetzt
-      default:
-      selector:
-        entity:
-          domain:
-            - binary_sensor
-            - input_boolean
-
-    day_comfort_temprature:
-      name: Tag Komfort-Temperatur
-      description: Komfort-Temperatur tagsüber
-      default: 21
-      selector:
-        number:
-          min: 5
-          max: 25
-          step: 0.5
-          unit_of_measurement: temperature
-
-    time_evening:
-      name: Startzeit Abend
-      description: Ab dieser Zeit gilt das Abend-Zeitfenster
-      default: "17:00:00"
-      selector:
-        time:
-
-    evening_eco_temprature:
-      name: Abend ECO-Temperatur
-      description: Standard-Temperatur abends (wenn jemand zuhause ist)
-      default: 19
-      selector:
-        number:
-          min: 5
-          max: 25
-          step: 0.5
-          unit_of_measurement: temperature
-
-    evening_comfort_checker_boolean:
-      name: Abend Komfort-Schalter (optional)
-      description: Wenn gesetzt und „on“, wird abends Komfort statt ECO gesetzt
-      default:
-      selector:
-        entity:
-          domain:
-            - binary_sensor
-            - input_boolean
-
-    evening_comfort_temprature:
-      name: Abend Komfort-Temperatur
-      description: Komfort-Temperatur abends
-      default: 20
-      selector:
-        number:
-          min: 5
-          max: 25
-          step: 0.5
-          unit_of_measurement: temperature
-
-    time_night:
-      name: Startzeit Nacht
-      description: Ab dieser Zeit gilt das Nacht-Zeitfenster (über Mitternacht)
-      default: "21:00:00"
-      selector:
-        time:
-
-    night_eco_temprature:
-      name: Nacht ECO-Temperatur
-      description: Standard-Temperatur nachts (wenn jemand zuhause ist)
-      default: 17
-      selector:
-        number:
-          min: 5
-          max: 25
-          step: 0.5
-          unit_of_measurement: temperature
-
-    night_comfort_checker_boolean:
-      name: Nacht Komfort-Schalter (optional)
-      description: Wenn gesetzt und „on“, wird nachts Komfort statt ECO gesetzt
-      default:
-      selector:
-        entity:
-          domain:
-            - binary_sensor
-            - input_boolean
-
-    night_comfort_temprature:
-      name: Nacht Komfort-Temperatur
-      description: Komfort-Temperatur nachts
+    temp_away:
+      name: Temperatur bei Abwesenheit
+      description: Temperatur, wenn niemand zuhause ist (nach Verzögerung).
       default: 18
       selector:
         number:
           min: 5
-          max: 25
+          max: 35
           step: 0.5
-          unit_of_measurement: temperature
+          unit_of_measurement: "°C"
+          mode: slider
 
 mode: restart
 max_exceeded: silent
 
 variables:
-  climate_entity_var: !input climate_entity
-  presence_entities: !input presence_entities
-
-  away_temprature: !input away_temprature
-  eco_temprature: !input eco_temprature
-
-  automation_blocker: !input automation_blocker
-  automation_blocker_boolean: !input automation_blocker_boolean
-
-  window_contact: !input window_contact
-  window_contact_boolean: !input window_contact_boolean
-
-  enable_morning: !input enable_morning
-  enable_day: !input enable_day
-  enable_evening: !input enable_evening
-  enable_night: !input enable_night
-
-  time_morning: !input time_morning
-  time_day: !input time_day
-  time_evening: !input time_evening
-  time_night: !input time_night
-
-  morning_eco_temprature: !input morning_eco_temprature
-  morning_comfort_temprature: !input morning_comfort_temprature
-  morning_comfort_checker_boolean: !input morning_comfort_checker_boolean
-
-  day_eco_temprature: !input day_eco_temprature
-  day_comfort_temprature: !input day_comfort_temprature
-  day_comfort_checker_boolean: !input day_comfort_checker_boolean
-
-  evening_eco_temprature: !input evening_eco_temprature
-  evening_comfort_temprature: !input evening_comfort_temprature
-  evening_comfort_checker_boolean: !input evening_comfort_checker_boolean
-
-  night_eco_temprature: !input night_eco_temprature
-  night_comfort_temprature: !input night_comfort_temprature
-  night_comfort_checker_boolean: !input night_comfort_checker_boolean
+  climates: !input climate_entities
+  windows: !input window_entities
+  extra_presence: !input extra_presence_entities
+  morning_start: !input morning_start
 
   anyone_home: >-
-    {{ expand(presence_entities)
-       | selectattr('state','eq','home')
-       | list | count > 0 }}
+    {% set base = ['person.emiliaseitz', 'person.kaiseitz'] %}
+    {% set all_entities = base + (extra_presence | list) %}
+    {{ expand(all_entities) | selectattr('state','eq','home') | list | count > 0 }}
+
+  any_window_open: >-
+    {% if windows is none or (windows | length) == 0 %}
+      false
+    {% else %}
+      {{
+        expand(windows)
+        | selectattr('state','eq','on')
+        | list | count > 0
+      }}
+    {% endif %}
 
 trigger:
+  # Start morgens
+  - platform: time
+    at: !input morning_start
+
+  # Anwesenheit ändert sich (feste Personen)
   - platform: state
-    entity_id: !input presence_entities
+    entity_id:
+      - person.emiliaseitz
+      - person.kaiseitz
 
+  # Anwesenheit ändert sich (optional zusätzliche)
+  - platform: state
+    entity_id: !input extra_presence_entities
+
+  # Fensterstatus ändert sich
+  - platform: state
+    entity_id: !input window_entities
+
+  # Sicherheits-Trigger
   - platform: time_pattern
-    minutes: /5
-
-  - platform: time
-    at: !input time_morning
-  - platform: time
-    at: !input time_day
-  - platform: time
-    at: !input time_evening
-  - platform: time
-    at: !input time_night
+    minutes: "/5"
 
 condition:
-  - condition: or
-    conditions:
-      - "{{ automation_blocker == none }}"
-      - "{{ automation_blocker_boolean and states[automation_blocker].state == 'on' }}"
-      - "{{ (not automation_blocker_boolean) and states[automation_blocker].state == 'off' }}"
+  # Vor Morgen-Startzeit: nichts tun
+  - condition: template
+    value_template: >-
+      {{ now() >= today_at(morning_start) }}
 
 action:
   - choose:
-      # Fenster offen -> nichts tun
+      # Fenster offen => Heizungen AUS
       - conditions:
-          - condition: or
-            conditions:
-              - "{{ window_contact != none and (window_contact_boolean and states[window_contact].state == 'on') }}"
-              - "{{ window_contact != none and ((not window_contact_boolean) and states[window_contact].state == 'off') }}"
-        sequence: []
+          - condition: template
+            value_template: "{{ any_window_open }}"
+        sequence:
+          - service: climate.turn_off
+            target:
+              entity_id: !input climate_entities
 
-      # Niemand zuhause -> warten -> wenn immer noch niemand zuhause: Away setzen
+      # Niemand zuhause => warten => wenn immer noch niemand zuhause + Fenster zu: Abwesenheits-Temp
       - conditions:
           - condition: template
             value_template: "{{ not anyone_home }}"
         sequence:
           - delay:
-              seconds: !input no_presence_wait
+              seconds: !input away_delay_seconds
           - condition: template
             value_template: "{{ not anyone_home }}"
+          - condition: template
+            value_template: "{{ not any_window_open }}"
           - service: climate.set_temperature
             target:
-              entity_id: !input climate_entity
+              entity_id: !input climate_entities
             data:
-              temperature: !input away_temprature
-
-      # Morgen (nur wenn aktiv + jemand zuhause)
-      - conditions:
-          - condition: template
-            value_template: "{{ anyone_home }}"
-          - condition: template
-            value_template: "{{ enable_morning }}"
-          - condition: time
-            after: !input time_morning
-            before: !input time_day
-        sequence:
-          - choose:
-              - conditions:
-                  - condition: template
-                    value_template: "{{ morning_comfort_checker_boolean != none and states[morning_comfort_checker_boolean].state == 'on' }}"
-                sequence:
-                  - condition: not
-                    conditions:
-                      - condition: template
-                        value_template: "{{ (state_attr(climate_entity_var, 'temperature') | float(0)) == morning_comfort_temprature }}"
-                  - service: climate.set_temperature
-                    target:
-                      entity_id: !input climate_entity
-                    data:
-                      temperature: !input morning_comfort_temprature
-            default:
-              - condition: not
-                conditions:
-                  - condition: template
-                    value_template: "{{ (state_attr(climate_entity_var, 'temperature') | float(0)) == morning_eco_temprature }}"
-              - service: climate.set_temperature
-                target:
-                  entity_id: !input climate_entity
-                data:
-                  temperature: !input morning_eco_temprature
-
-      # Tag (nur wenn aktiv + jemand zuhause)
-      - conditions:
-          - condition: template
-            value_template: "{{ anyone_home }}"
-          - condition: template
-            value_template: "{{ enable_day }}"
-          - condition: time
-            after: !input time_day
-            before: !input time_evening
-        sequence:
-          - choose:
-              - conditions:
-                  - condition: template
-                    value_template: "{{ day_comfort_checker_boolean != none and states[day_comfort_checker_boolean].state == 'on' }}"
-                sequence:
-                  - condition: not
-                    conditions:
-                      - condition: template
-                        value_template: "{{ (state_attr(climate_entity_var, 'temperature') | float(0)) == day_comfort_temprature }}"
-                  - service: climate.set_temperature
-                    target:
-                      entity_id: !input climate_entity
-                    data:
-                      temperature: !input day_comfort_temprature
-            default:
-              - condition: not
-                conditions:
-                  - condition: template
-                    value_template: "{{ (state_attr(climate_entity_var, 'temperature') | float(0)) == day_eco_temprature }}"
-              - service: climate.set_temperature
-                target:
-                  entity_id: !input climate_entity
-                data:
-                  temperature: !input day_eco_temprature
-
-      # Abend (nur wenn aktiv + jemand zuhause)
-      - conditions:
-          - condition: template
-            value_template: "{{ anyone_home }}"
-          - condition: template
-            value_template: "{{ enable_evening }}"
-          - condition: time
-            after: !input time_evening
-            before: !input time_night
-        sequence:
-          - choose:
-              - conditions:
-                  - condition: template
-                    value_template: "{{ evening_comfort_checker_boolean != none and states[evening_comfort_checker_boolean].state == 'on' }}"
-                sequence:
-                  - condition: not
-                    conditions:
-                      - condition: template
-                        value_template: "{{ (state_attr(climate_entity_var, 'temperature') | float(0)) == evening_comfort_temprature }}"
-                  - service: climate.set_temperature
-                    target:
-                      entity_id: !input climate_entity
-                    data:
-                      temperature: !input evening_comfort_temprature
-            default:
-              - condition: not
-                conditions:
-                  - condition: template
-                    value_template: "{{ (state_attr(climate_entity_var, 'temperature') | float(0)) == evening_eco_temprature }}"
-              - service: climate.set_temperature
-                target:
-                  entity_id: !input climate_entity
-                data:
-                  temperature: !input evening_eco_temprature
-
-      # Nacht (nur wenn aktiv + jemand zuhause) - über Mitternacht korrekt
-      - conditions:
-          - condition: template
-            value_template: "{{ anyone_home }}"
-          - condition: template
-            value_template: "{{ enable_night }}"
-          - condition: template
-            value_template: >-
-              {% set now_t = now() %}
-              {% set night_t = today_at(time_night) %}
-              {% set morning_t = today_at(time_morning) %}
-              {{ now_t >= night_t or now_t < morning_t }}
-        sequence:
-          - choose:
-              - conditions:
-                  - condition: template
-                    value_template: "{{ night_comfort_checker_boolean != none and states[night_comfort_checker_boolean].state == 'on' }}"
-                sequence:
-                  - condition: not
-                    conditions:
-                      - condition: template
-                        value_template: "{{ (state_attr(climate_entity_var, 'temperature') | float(0)) == night_comfort_temprature }}"
-                  - service: climate.set_temperature
-                    target:
-                      entity_id: !input climate_entity
-                    data:
-                      temperature: !input night_comfort_temprature
-            default:
-              - condition: not
-                conditions:
-                  - condition: template
-                    value_template: "{{ (state_attr(climate_entity_var, 'temperature') | float(0)) == night_eco_temprature }}"
-              - service: climate.set_temperature
-                target:
-                  entity_id: !input climate_entity
-                data:
-                  temperature: !input night_eco_temprature
+              temperature: !input temp_away
 
     default:
-      # Standard ECO (nur wenn jemand zuhause)
+      # Jemand zuhause + Fenster zu => Anwesenheits-Temp
       - condition: template
         value_template: "{{ anyone_home }}"
-      - condition: not
-        conditions:
-          - condition: template
-            value_template: "{{ (state_attr(climate_entity_var, 'temperature') | float(0)) == eco_temprature }}"
+      - condition: template
+        value_template: "{{ not any_window_open }}"
       - service: climate.set_temperature
         target:
-          entity_id: !input climate_entity
+          entity_id: !input climate_entities
         data:
-          temperature: !input eco_temprature
+          temperature: !input temp_present

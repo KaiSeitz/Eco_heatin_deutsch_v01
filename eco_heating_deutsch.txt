@@ -1,24 +1,29 @@
 blueprint:
   name: ECO Heating Ultimate v1.2 (DE – Personen/Handys)
   description: >
-    Heizungs-Automation mit Zeitfenstern + Anwesenheit über Personen/Handys.
-    Zuhause = mindestens eine ausgewählte Person / ein Tracker ist „home“.
-    Optional: Fensterkontakt, Komfort-Schalter pro Zeitfenster, Automations-Sperre.
+    Steuert ein Thermostat (Climate Entity) anhand von Anwesenheit (Personen/Handys),
+    Zeitfenstern (Morgen/Tag/Abend/Nacht), optional Fensterkontakt, optional Komfort-Schaltern
+    sowie optionaler Automations-Sperre.
+
+    Anwesenheit:
+    Du wählst eine oder mehrere Entities (person.* und/oder device_tracker.*).
+    „Zuhause“ = mindestens eine ausgewählte Entity hat den Zustand „home“.
+    Wenn niemand zuhause ist, wird nach der Wartezeit die Abwesenheits-Temperatur gesetzt.
 
   domain: automation
   source_url: https://gist.github.com/TheRealSimon42/3b783cf34cf3185ada8dfa0ff67249c5
 
   input:
     climate_entity:
-      name: Thermostat
-      description: Das Thermostat oder die Climate-Gruppe, die gesteuert wird.
+      name: Thermostat / Climate Entity
+      description: Thermostat oder Climate-Gruppe, die gesteuert werden soll
       selector:
         entity:
           domain: climate
 
     presence_entities:
       name: Anwesenheit (Personen/Handys)
-      description: Personen (person.*) und/oder Handys (device_tracker.*) auswählen. „Home“ = zuhause.
+      description: Wähle Personen (person.*) und/oder Handys (device_tracker.*). Zuhause = mindestens eine Entity ist „home“.
       selector:
         entity:
           multiple: true
@@ -28,7 +33,7 @@ blueprint:
 
     no_presence_wait:
       name: Wartezeit bis Absenkung
-      description: So lange warten, nachdem niemand mehr zuhause ist.
+      description: Zeit, die gewartet wird, bevor bei „niemand zuhause“ auf Abwesenheits-Temperatur gestellt wird
       default: 120
       selector:
         number:
@@ -37,8 +42,8 @@ blueprint:
           unit_of_measurement: seconds
 
     away_temprature:
-      name: Temperatur bei Abwesenheit
-      description: Wird gesetzt, wenn niemand zuhause ist.
+      name: Abwesenheits-Temperatur
+      description: Temperatur, wenn niemand zuhause ist
       default: 16
       selector:
         number:
@@ -49,7 +54,7 @@ blueprint:
 
     eco_temprature:
       name: Standard ECO-Temperatur
-      description: Wird gesetzt, wenn jemand zuhause ist und kein Zeitfenster greift.
+      description: Temperatur, wenn jemand zuhause ist und kein Zeitfenster greift
       default: 17
       selector:
         number:
@@ -60,7 +65,7 @@ blueprint:
 
     window_contact:
       name: Fensterkontakt (optional)
-      description: Wenn Fenster im unerwünschten Zustand ist, wird nichts geändert.
+      description: Wenn Fenster im definierten Zustand ist, werden keine Temperaturen gesetzt
       default:
       selector:
         entity:
@@ -70,14 +75,14 @@ blueprint:
 
     window_contact_boolean:
       name: Fensterzustand (optional)
-      description: Unerwünschter Zustand (meist „on“ = offen).
+      description: Unerwünschter Zustand (meist „on“ = offen)
       default: true
       selector:
         boolean:
 
     automation_blocker:
-      name: Sperrschalter (optional)
-      description: Wenn gesetzt, läuft die Automation nur im gewünschten Zustand.
+      name: Automations-Sperre (optional)
+      description: Optionaler Schalter, der die Automation sperrt/erlaubt
       default:
       selector:
         entity:
@@ -86,22 +91,22 @@ blueprint:
             - input_boolean
 
     automation_blocker_boolean:
-      name: Sperrschalter-Zustand
-      description: Gewünschter Zustand des Sperrschalters (on/off), damit die Automation laufen darf.
+      name: Sperre - gewünschter Zustand
+      description: In welchem Zustand der Sperre soll die Automation laufen (on/off)
       default: false
       selector:
         boolean:
 
     time_morning:
-      name: Start Morgen
-      description: Startzeit für „Morgen“.
+      name: Startzeit Morgen
+      description: Ab dieser Zeit gilt das Morgen-Zeitfenster
       default: "06:00:00"
       selector:
         time:
 
     morning_eco_temprature:
-      name: Morgen ECO
-      description: ECO-Temperatur im Morgen-Zeitfenster.
+      name: Morgen ECO-Temperatur
+      description: Standard-Temperatur morgens (wenn jemand zuhause ist)
       default: 19
       selector:
         number:
@@ -112,7 +117,7 @@ blueprint:
 
     morning_comfort_checker_boolean:
       name: Morgen Komfort-Schalter (optional)
-      description: Wenn „on“, wird morgens Komfort statt ECO gesetzt.
+      description: Wenn gesetzt und „on“, wird morgens Komfort statt ECO gesetzt
       default:
       selector:
         entity:
@@ -121,8 +126,8 @@ blueprint:
             - input_boolean
 
     morning_comfort_temprature:
-      name: Morgen Komfort
-      description: Komfort-Temperatur im Morgen-Zeitfenster.
+      name: Morgen Komfort-Temperatur
+      description: Komfort-Temperatur morgens
       default: 21
       selector:
         number:
@@ -132,15 +137,15 @@ blueprint:
           unit_of_measurement: temperature
 
     time_day:
-      name: Start Tag
-      description: Startzeit für „Tag“.
+      name: Startzeit Tag
+      description: Ab dieser Zeit gilt das Tag-Zeitfenster
       default: "09:00:00"
       selector:
         time:
 
     day_eco_temprature:
-      name: Tag ECO
-      description: ECO-Temperatur im Tag-Zeitfenster.
+      name: Tag ECO-Temperatur
+      description: Standard-Temperatur tagsüber (wenn jemand zuhause ist)
       default: 19
       selector:
         number:
@@ -151,7 +156,7 @@ blueprint:
 
     day_comfort_checker_boolean:
       name: Tag Komfort-Schalter (optional)
-      description: Wenn „on“, wird tagsüber Komfort statt ECO gesetzt.
+      description: Wenn gesetzt und „on“, wird tagsüber Komfort statt ECO gesetzt
       default:
       selector:
         entity:
@@ -160,8 +165,8 @@ blueprint:
             - input_boolean
 
     day_comfort_temprature:
-      name: Tag Komfort
-      description: Komfort-Temperatur im Tag-Zeitfenster.
+      name: Tag Komfort-Temperatur
+      description: Komfort-Temperatur tagsüber
       default: 21
       selector:
         number:
@@ -171,15 +176,15 @@ blueprint:
           unit_of_measurement: temperature
 
     time_evening:
-      name: Start Abend
-      description: Startzeit für „Abend“.
+      name: Startzeit Abend
+      description: Ab dieser Zeit gilt das Abend-Zeitfenster
       default: "17:00:00"
       selector:
         time:
 
     evening_eco_temprature:
-      name: Abend ECO
-      description: ECO-Temperatur im Abend-Zeitfenster.
+      name: Abend ECO-Temperatur
+      description: Standard-Temperatur abends (wenn jemand zuhause ist)
       default: 19
       selector:
         number:
@@ -190,7 +195,7 @@ blueprint:
 
     evening_comfort_checker_boolean:
       name: Abend Komfort-Schalter (optional)
-      description: Wenn „on“, wird abends Komfort statt ECO gesetzt.
+      description: Wenn gesetzt und „on“, wird abends Komfort statt ECO gesetzt
       default:
       selector:
         entity:
@@ -199,8 +204,8 @@ blueprint:
             - input_boolean
 
     evening_comfort_temprature:
-      name: Abend Komfort
-      description: Komfort-Temperatur im Abend-Zeitfenster.
+      name: Abend Komfort-Temperatur
+      description: Komfort-Temperatur abends
       default: 20
       selector:
         number:
@@ -210,15 +215,15 @@ blueprint:
           unit_of_measurement: temperature
 
     time_night:
-      name: Start Nacht
-      description: Startzeit für „Nacht“ (läuft über Mitternacht).
+      name: Startzeit Nacht
+      description: Ab dieser Zeit gilt das Nacht-Zeitfenster (über Mitternacht)
       default: "21:00:00"
       selector:
         time:
 
     night_eco_temprature:
-      name: Nacht ECO
-      description: ECO-Temperatur im Nacht-Zeitfenster.
+      name: Nacht ECO-Temperatur
+      description: Standard-Temperatur nachts (wenn jemand zuhause ist)
       default: 17
       selector:
         number:
@@ -229,7 +234,7 @@ blueprint:
 
     night_comfort_checker_boolean:
       name: Nacht Komfort-Schalter (optional)
-      description: Wenn „on“, wird nachts Komfort statt ECO gesetzt.
+      description: Wenn gesetzt und „on“, wird nachts Komfort statt ECO gesetzt
       default:
       selector:
         entity:
@@ -238,8 +243,8 @@ blueprint:
             - input_boolean
 
     night_comfort_temprature:
-      name: Nacht Komfort
-      description: Komfort-Temperatur im Nacht-Zeitfenster.
+      name: Nacht Komfort-Temperatur
+      description: Komfort-Temperatur nachts
       default: 18
       selector:
         number:
@@ -291,12 +296,15 @@ variables:
        | list | count > 0 }}
 
 trigger:
+  # Änderungen an irgendeiner ausgewählten Person / Tracker
   - platform: state
     entity_id: !input presence_entities
 
+  # alle 5 Minuten als Sicherheits-Trigger
   - platform: time_pattern
     minutes: /5
 
+  # Zeitfenster-Trigger
   - platform: time
     at: !input time_morning
   - platform: time

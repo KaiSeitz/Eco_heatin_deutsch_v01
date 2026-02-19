@@ -1,5 +1,5 @@
 blueprint:
-  name: ECO Heating Ultimate v1.2 (DE – Personen/Handys)
+  name: ECO Heating Ultimate v1.2 (DE – Personen/Handys + Zeitfenster-Schalter)
   description: >
     Steuert ein Thermostat (Climate Entity) anhand von Anwesenheit (Personen/Handys),
     Zeitfenstern (Morgen/Tag/Abend/Nacht), optional Fensterkontakt, optional Komfort-Schaltern
@@ -9,6 +9,11 @@ blueprint:
     Du wählst eine oder mehrere Entities (person.* und/oder device_tracker.*).
     „Zuhause“ = mindestens eine ausgewählte Entity hat den Zustand „home“.
     Wenn niemand zuhause ist, wird nach der Wartezeit die Abwesenheits-Temperatur gesetzt.
+
+    Zeitfenster-Schalter:
+    Jedes Zeitfenster (Morgen/Tag/Abend/Nacht) kann separat ein-/ausgeschaltet werden.
+    Wenn ein Zeitfenster deaktiviert ist, wird es ignoriert und es greift ggf. ein anderes aktives Zeitfenster
+    oder die Standard ECO-Temperatur.
 
   domain: automation
   source_url: https://gist.github.com/TheRealSimon42/3b783cf34cf3185ada8dfa0ff67249c5
@@ -94,6 +99,34 @@ blueprint:
       name: Sperre - gewünschter Zustand
       description: In welchem Zustand der Sperre soll die Automation laufen (on/off)
       default: false
+      selector:
+        boolean:
+
+    enable_morning:
+      name: Zeitfenster Morgen aktiv
+      description: Schaltet das Morgen-Zeitfenster ein/aus.
+      default: true
+      selector:
+        boolean:
+
+    enable_day:
+      name: Zeitfenster Tag aktiv
+      description: Schaltet das Tag-Zeitfenster ein/aus.
+      default: true
+      selector:
+        boolean:
+
+    enable_evening:
+      name: Zeitfenster Abend aktiv
+      description: Schaltet das Abend-Zeitfenster ein/aus.
+      default: true
+      selector:
+        boolean:
+
+    enable_night:
+      name: Zeitfenster Nacht aktiv
+      description: Schaltet das Nacht-Zeitfenster ein/aus.
+      default: true
       selector:
         boolean:
 
@@ -269,6 +302,11 @@ variables:
   window_contact: !input window_contact
   window_contact_boolean: !input window_contact_boolean
 
+  enable_morning: !input enable_morning
+  enable_day: !input enable_day
+  enable_evening: !input enable_evening
+  enable_night: !input enable_night
+
   time_morning: !input time_morning
   time_day: !input time_day
   time_evening: !input time_evening
@@ -296,15 +334,12 @@ variables:
        | list | count > 0 }}
 
 trigger:
-  # Änderungen an irgendeiner ausgewählten Person / Tracker
   - platform: state
     entity_id: !input presence_entities
 
-  # alle 5 Minuten als Sicherheits-Trigger
   - platform: time_pattern
     minutes: /5
 
-  # Zeitfenster-Trigger
   - platform: time
     at: !input time_morning
   - platform: time
@@ -346,10 +381,12 @@ action:
             data:
               temperature: !input away_temprature
 
-      # Morgen (nur wenn jemand zuhause)
+      # Morgen (nur wenn aktiv + jemand zuhause)
       - conditions:
           - condition: template
             value_template: "{{ anyone_home }}"
+          - condition: template
+            value_template: "{{ enable_morning }}"
           - condition: time
             after: !input time_morning
             before: !input time_day
@@ -379,10 +416,12 @@ action:
                 data:
                   temperature: !input morning_eco_temprature
 
-      # Tag (nur wenn jemand zuhause)
+      # Tag (nur wenn aktiv + jemand zuhause)
       - conditions:
           - condition: template
             value_template: "{{ anyone_home }}"
+          - condition: template
+            value_template: "{{ enable_day }}"
           - condition: time
             after: !input time_day
             before: !input time_evening
@@ -412,10 +451,12 @@ action:
                 data:
                   temperature: !input day_eco_temprature
 
-      # Abend (nur wenn jemand zuhause)
+      # Abend (nur wenn aktiv + jemand zuhause)
       - conditions:
           - condition: template
             value_template: "{{ anyone_home }}"
+          - condition: template
+            value_template: "{{ enable_evening }}"
           - condition: time
             after: !input time_evening
             before: !input time_night
@@ -445,10 +486,12 @@ action:
                 data:
                   temperature: !input evening_eco_temprature
 
-      # Nacht (nur wenn jemand zuhause) - über Mitternacht korrekt
+      # Nacht (nur wenn aktiv + jemand zuhause) - über Mitternacht korrekt
       - conditions:
           - condition: template
             value_template: "{{ anyone_home }}"
+          - condition: template
+            value_template: "{{ enable_night }}"
           - condition: template
             value_template: >-
               {% set now_t = now() %}

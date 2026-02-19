@@ -1,28 +1,26 @@
 blueprint:
-  name: Heizung nach Anwesenheit + Fenster (mehrere Heizungen)
+  name: Heizungssteuerung nach Anwesenheit + Fenster (Multi-Heizungen)
   description: >
-    Steuert mehrere Heizungen gemeinsam.
-    - Startet erst ab „Morgen-Startzeit“
-    - Mindestens eine Person zuhause => Anwesenheits-Temperatur
-    - Niemand zuhause => nach Verzögerung Abwesenheits-Temperatur
-    - Fenster offen => Heizungen AUS
-    Feste Personen: person.emiliaseitz + person.kaiseitz
-    Optional: weitere Personen/Tracker ergänzen.
+    Steuert eine oder mehrere Heizungen (climate.*) nach Anwesenheit.
+    - Startet erst ab einer frei wählbaren Uhrzeit (Morgen-Start).
+    - Mindestens eine Person zuhause => Anwesenheits-Temperatur.
+    - Niemand zuhause => nach Verzögerung Abwesenheits-Temperatur.
+    - Wenn ein Fenster offen ist => Heizungen werden ausgeschaltet (climate.turn_off).
 
   domain: automation
 
   input:
-    climate_entities:
-      name: Heizungen (eine oder mehrere)
-      description: Wähle die Thermostate / Climate-Entities, die gemeinsam gesteuert werden sollen.
+    heaters:
+      name: Heizungen
+      description: Eine oder mehrere Climate-Entities auswählen, die gemeinsam gesteuert werden.
       selector:
         entity:
-          multiple: true
           domain: climate
+          multiple: true
 
-    window_entities:
-      name: Fensterkontakte (optional)
-      description: Wenn einer davon „offen“ ist, werden die Heizungen ausgeschaltet.
+    windows:
+      name: Fensterkontakt(e)
+      description: Wenn mindestens einer dieser Kontakte „on“ ist (offen), werden die Heizungen ausgeschaltet.
       default: []
       selector:
         entity:
@@ -33,25 +31,14 @@ blueprint:
 
     morning_start:
       name: Morgen-Startzeit
-      description: Ab dieser Uhrzeit beginnt die Steuerung (vorher wird nichts verändert).
+      description: Ab dieser Uhrzeit beginnt die Automatik (vorher wird nichts verändert).
       default: "06:00:00"
       selector:
         time:
 
-    extra_presence_entities:
-      name: Zusätzliche Anwesenheit (optional)
-      description: Weitere Personen (person.*) oder Tracker (device_tracker.*), die als „zuhause“ zählen.
-      default: []
-      selector:
-        entity:
-          multiple: true
-          domain:
-            - person
-            - device_tracker
-
-    away_delay_seconds:
-      name: Verzögerung bis Abwesenheit (Sekunden)
-      description: Wenn niemand zuhause ist, so lange warten, bevor auf Abwesenheits-Temperatur gestellt wird.
+    away_delay:
+      name: Verzögerung bei Abwesenheit (Sekunden)
+      description: Wenn niemand zuhause ist, so lange warten, bevor Abwesenheits-Temperatur gesetzt wird.
       default: 300
       selector:
         number:
@@ -63,7 +50,7 @@ blueprint:
 
     temp_present:
       name: Temperatur bei Anwesenheit
-      description: Temperatur, wenn mindestens eine Person zuhause ist.
+      description: Wird gesetzt, wenn mindestens eine Person zuhause ist.
       default: 21
       selector:
         number:
@@ -75,7 +62,7 @@ blueprint:
 
     temp_away:
       name: Temperatur bei Abwesenheit
-      description: Temperatur, wenn niemand zuhause ist (nach Verzögerung).
+      description: Wird gesetzt, wenn niemand zuhause ist (nach Verzögerung).
       default: 18
       selector:
         number:
@@ -85,33 +72,41 @@ blueprint:
           unit_of_measurement: "°C"
           mode: slider
 
+    extra_presence:
+      name: Zusätzliche Personen/Tracker (optional)
+      description: Weitere person.* oder device_tracker.* hinzufügen, die als „zuhause“ zählen sollen.
+      default: []
+      selector:
+        entity:
+          multiple: true
+          domain:
+            - person
+            - device_tracker
+
 mode: restart
 max_exceeded: silent
 
 variables:
-  climates: !input climate_entities
-  windows: !input window_entities
-  extra_presence: !input extra_presence_entities
-  morning_start: !input morning_start
+  v_heaters: !input heaters
+  v_windows: !input windows
+  v_morning_start: !input morning_start
+  v_extra_presence: !input extra_presence
+
+  v_presence_all: >-
+    {{ ['person.emiliaseitz', 'person.kaiseitz'] + (v_extra_presence | list) }}
 
   anyone_home: >-
-    {% set base = ['person.emiliaseitz', 'person.kaiseitz'] %}
-    {% set all_entities = base + (extra_presence | list) %}
-    {{ expand(all_entities) | selectattr('state','eq','home') | list | count > 0 }}
+    {{ expand(v_presence_all) | selectattr('state','eq','home') | list | count > 0 }}
 
   any_window_open: >-
-    {% if windows is none or (windows | length) == 0 %}
+    {% if v_windows is none or (v_windows | length) == 0 %}
       false
     {% else %}
-      {{
-        expand(windows)
-        | selectattr('state','eq','on')
-        | list | count > 0
-      }}
+      {{ expand(v_windows) | selectattr('state','eq','on') | list | count > 0 }}
     {% endif %}
 
 trigger:
-  # Start morgens
+  # Start der Automatik am Morgen
   - platform: time
     at: !input morning_start
 
@@ -121,60 +116,59 @@ trigger:
       - person.emiliaseitz
       - person.kaiseitz
 
-  # Anwesenheit ändert sich (optional zusätzliche)
+  # Anwesenheit ändert sich (zusätzliche Entities)
   - platform: state
-    entity_id: !input extra_presence_entities
+    entity_id: !input extra_presence
 
-  # Fensterstatus ändert sich
+  # Fenster ändert sich
   - platform: state
-    entity_id: !input window_entities
+    entity_id: !input windows
 
-  # Sicherheits-Trigger
+  # Safety: alle 5 Minuten
   - platform: time_pattern
     minutes: "/5"
 
 condition:
-  # Vor Morgen-Startzeit: nichts tun
+  # Vor der Morgen-Startzeit: keine Steuerung
   - condition: template
-    value_template: >-
-      {{ now() >= today_at(morning_start) }}
+    value_template: "{{ now() >= today_at(v_morning_start) }}"
 
 action:
   - choose:
-      # Fenster offen => Heizungen AUS
+      # Fenster offen -> Heizungen AUS
       - conditions:
           - condition: template
             value_template: "{{ any_window_open }}"
         sequence:
           - service: climate.turn_off
             target:
-              entity_id: !input climate_entities
+              entity_id: !input heaters
 
-      # Niemand zuhause => warten => wenn immer noch niemand zuhause + Fenster zu: Abwesenheits-Temp
+      # Niemand zuhause -> warten -> wenn immer noch niemand zuhause und Fenster zu -> Abwesenheits-Temp
       - conditions:
           - condition: template
             value_template: "{{ not anyone_home }}"
         sequence:
           - delay:
-              seconds: !input away_delay_seconds
+              seconds: !input away_delay
           - condition: template
             value_template: "{{ not anyone_home }}"
           - condition: template
             value_template: "{{ not any_window_open }}"
           - service: climate.set_temperature
             target:
-              entity_id: !input climate_entities
+              entity_id: !input heaters
             data:
               temperature: !input temp_away
 
     default:
-      # Jemand zuhause + Fenster zu => Anwesenheits-Temp
+      # Jemand zuhause und Fenster zu -> Anwesenheits-Temp
       - condition: template
         value_template: "{{ anyone_home }}"
       - condition: template
         value_template: "{{ not any_window_open }}"
       - service: climate.set_temperature
         target:
-          entity_id: !input climate_entities
+          entity_id: !input heaters
         data:
           temperature: !input temp_present
